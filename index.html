@@ -1386,13 +1386,21 @@ const bindInteractions = () => {
   });
 
   const observer = new IntersectionObserver(
-    (entries) => {
-      const visible = entries
-        .filter((entry) => entry.isIntersecting)
-        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    () => {
+      const targetLine = window.innerHeight * 0.28;
+      const visible = [...document.querySelectorAll(".day-card")]
+        .map((card) => ({
+          card,
+          rect: card.getBoundingClientRect(),
+        }))
+        .filter(({ rect }) => rect.bottom > 0 && rect.top < window.innerHeight)
+        .sort(
+          (a, b) =>
+            Math.abs(a.rect.top - targetLine) - Math.abs(b.rect.top - targetLine),
+        )[0];
       if (!visible) return;
       document.querySelectorAll(".day-chip").forEach((chip) => {
-        chip.classList.toggle("active", chip.dataset.day === visible.target.dataset.day);
+        chip.classList.toggle("active", chip.dataset.day === visible.card.dataset.day);
       });
     },
     { rootMargin: "-25% 0px -60% 0px", threshold: [0.05, 0.2, 0.45] },
