@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>行李打包清单 · 九州家庭旅行</title>
+  <meta name="description" content="两位大人和一位5岁孩子，13天九州家庭旅行打包清单。家庭专属链接，自动同步准备进度。">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23234538'/%3E%3Cpath d='M11 21l6 6 13-15' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="packing.css?v=1">
+  <script defer src="packing-data.js?v=1"></script><script defer src="packing-cloud.js?v=1"></script><script defer src="packing.js?v=1"></script>
+</head>
+<body>
+  <header class="top"><a href="./" class="brand"><span class="mark">森</span> 九州家庭旅行</a><a href="./">查看行程 ↗</a></header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">READY FOR THE JOURNEY</p><h1>把旅行，慢慢装进行李。</h1><p class="subtitle">9月25日 — 10月7日 · 13天 · 两位大人，一位5岁孩子</p></div><span class="trip-tag">屋久岛 / 九州</span></div>
+    <section class="progress-panel" aria-label="全家打包进度">
+      <div class="progress-heading"><div><span class="eyebrow">全家准备进度</span><p><strong id="packed-count">0</strong><span id="total-count"> / 0 项已装好</span></p></div><strong id="percent">0%</strong></div>
+      <progress id="progress" max="100" value="0" aria-label="全家打包完成百分比"></progress>
+      <div class="progress-foot"><span id="remaining">正在载入清单</span><span id="sync-status" role="status" aria-live="polite">准备连接</span></div>
+    </section>
+    <section class="connection" id="connection"><div><strong>和家人一起准备</strong><p>两台手机分别连接 GitHub，再打开同一个家庭专属链接，即可同步。状态加密存储在仓库中。</p></div><button id="create" class="primary">连接并建立清单</button></section>
+    <div id="error" class="error" role="alert" hidden></div>
+    <nav class="members" id="members" aria-label="按成员查看"></nav>
+    <div class="toolbar"><div class="selectors"><label>类别 <select id="category"><option value="all">全部类别</option></select></label><label>状态 <select id="status"><option value="all">全部物品</option><option value="todo">还没装好</option><option value="packed">已经装好</option><option value="skip">本次不带</option></select></label></div><div class="actions"><button id="share" disabled>分享给家人</button><button id="refresh" disabled>同步</button><button id="export" disabled>导出备份</button><button id="import" disabled>导入备份</button><button id="github-connect">GitHub 连接</button></div></div>
+    <p class="list-hint">数量含出发当天穿的衣物，按途中洗衣约两次准备。装好后勾选；不需要的物品可设为“本次不带”。</p>
+    <div id="list"></div><p id="empty" class="empty" hidden>这个筛选下没有物品。可以换个类别，或查看全部。</p>
+    <section class="notes"><label for="family-note">全家打包备注</label><textarea id="family-note" maxlength="2000" rows="3" placeholder="例如：雨具放蓝色背包；D6熊本一晚用品单独分装。请勿填写证件号码或其他敏感资料。" disabled></textarea><button id="save-note" disabled>保存备注</button></section>
+    <section class="trip-notes"><h2>跟着行程打包</h2><div class="tips"><article><span>D3 · D4 · D8</span><h3>雨具放在手边</h3><p>屋久杉乐园、白谷云水峡、锅瀑布：带雨衣、防滑鞋、备用袜子和一套孩子的干衣服。</p></article><article><span>D1 · D6</span><h3>一晚用品单独装</h3><p>福冈和熊本各一晚，把睡衣、内衣、次日衣服和洗漱用品装成小袋，抵达即可取用。</p></article><article><span>D2 · D12</span><h3>给购物留一点空间</h3><p>D2屋久岛补充水、食品和日用品；D12天神集中采购。常用药、合脚鞋和雨具从家里带齐。</p></article></div></section>
+    <footer><p>进度加密保存在 GitHub 仓库，两台手机分别连接 GitHub 后，使用同一专属链接即可同步。页面打开时约每15秒检查更新。断网操作暂存当前设备，恢复网络后补传。</p><button id="reset" disabled>重置全家勾选状态</button><p class="small">专属链接包含清单的解密钥匙，请只发给同行家人。导出的备份为明文，请妥善保管。衣物数量为建议值，按实际需要选择。</p></footer>
+  </main>
+  <dialog id="modal"><h2 id="modal-title"></h2><p id="modal-text"></p><textarea id="share-link" readonly rows="3" hidden aria-label="家庭专属链接"></textarea><div class="dialog-actions"><button id="cancel">取消</button><button id="confirm" class="primary">确定</button></div></dialog>
+  <input type="file" id="file" accept="application/json,.json" hidden>
+  <dialog id="github-dialog"><h2>连接 GitHub 同步</h2><p>使用仅授予 HerbChung / 202609Travel 仓库 <strong>Contents：读写</strong>权限的 fine-grained token。两台手机需分别连接。</p><label for="github-token">Fine-grained token</label><input id="github-token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…"><label class="remember"><input type="checkbox" id="remember-token"> 在这台个人设备的浏览器中记住令牌</label><p class="small">不勾选时仅在本次页面打开期间使用。令牌不会放进网页源码、仓库文件或分享链接；勾选记住后会保存在此浏览器中。</p><div id="github-error" role="alert"></div><div class="dialog-actions"><button id="github-disconnect">断开并忘记令牌</button><button id="github-cancel">取消</button><button id="github-confirm" class="primary">连接</button></div></dialog>
+  <noscript>请启用浏览器的 JavaScript，以使用勾选和自动同步功能。</noscript>
+</body></html>
