@@ -1644,7 +1644,7 @@ initialize();
     try{
       if(!window.crypto?.subtle)throw Error('This browser needs HTTPS and Web Crypto');
       inflight=new AbortController();
-      const response=await fetch(new URL('reservations/vault.enc.json',document.baseURI),{signal:inflight.signal});
+      const response=await fetch(new URL('reservations/vault.enc.json?v=41c9d70f555bb561',document.baseURI),{signal:inflight.signal,cache:'no-store'});
       if(!response.ok)throw Error('Download failed');
       const envelope=await response.json();
       if(envelope.version!==1||envelope.algorithm!=='AES-GCM'||envelope.kdf!=='PBKDF2-SHA256'||envelope.iterations!==600000)throw Error('Unsupported vault format');
