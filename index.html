@@ -1323,6 +1323,9 @@ const summaryItem = (label, value) => `
 let itinerary = { overview: [], hourly: [] };
 
 const reservationForEvent = {
+  1: 'flight-mu5087', 2: 'flight-mu5087', 3: 'flight-mu5087', 14: 'flight-jal', 15: 'flight-jal',
+  51: 'flight-jal', 52: 'flight-jal', 55: 'train-kumamoto', 115: 'train-sonic',
+  142: 'flight-mu518', 143: 'flight-mu518', 144: 'flight-mu518',
   4: 'grand-hyatt', 8: 'grand-hyatt', 16: 'times', 17: 'samana', 24: 'samana', 27: 'samana', 47: 'samana', 50: 'times',
   59: 'toyota', 69: 'sanga', 73: 'sanga', 77: 'nabegataki', 78: 'nabegataki',
   85: 'sanga', 92: 'murata', 96: 'murata', 105: 'yumesaki', 111: 'yumesaki', 113: 'toyota', 117: 'one-fukuoka', 141: 'one-fukuoka',
@@ -1541,7 +1544,7 @@ initialize();
   dialog.id = 'reservation-vault';
   dialog.setAttribute('aria-labelledby', 'vault-title');
   dialog.innerHTML = `<header class="vault-header"><div><p class="eyebrow dark">FAMILY RESERVATIONS</p><h2 id="vault-title">家庭预订夹</h2></div><button type="button" id="vault-close" aria-label="关闭并锁定预订夹">关闭并锁定 ×</button></header>
-    <form id="vault-unlock"><p>酒店、餐厅、景点及租车的预订凭证已加密。请输入家庭密码，仅在当前设备解密。</p><label for="vault-password">家庭密码</label><div class="vault-password-row"><input id="vault-password" name="family-password" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" required /><button type="submit">解锁预订</button></div><label class="vault-show"><input type="checkbox" id="vault-show-password" /> 显示密码</label><p id="vault-message" role="status" aria-live="polite"></p><p class="vault-small">密码不上传、不保存。关闭、刷新或闲置10分钟后锁定。完整凭证请勿转发到公开群组。</p></form>
+    <form id="vault-unlock"><p>酒店、餐厅、景点、机票及租车的预订凭证已加密。请输入家庭密码，仅在当前设备解密。</p><label for="vault-password">家庭密码</label><div class="vault-password-row"><input id="vault-password" name="family-password" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" required /><button type="submit">解锁预订</button></div><label class="vault-show"><input type="checkbox" id="vault-show-password" /> 显示密码</label><p id="vault-message" role="status" aria-live="polite"></p><p class="vault-small">密码不上传、不保存。关闭、刷新或闲置10分钟后锁定。完整凭证请勿转发到公开群组。</p></form>
     <section id="vault-content" hidden><div class="vault-toolbar"><label for="vault-filter">查看范围</label><select id="vault-filter"></select><button type="button" id="vault-lock">立即锁定</button></div><p class="vault-small">据2026年9月24日已检索的邮件整理，不是商户实时订单状态。正文图片为原文重排快照；原始二维码单独列出。</p><div id="vault-records"></div></section>`;
   document.body.append(dialog);
   const $ = (s) => dialog.querySelector(s);
@@ -1587,7 +1590,7 @@ initialize();
   function render() {
     const target=$('#vault-records'); target.replaceChildren();
     for(const url of blobURLs)URL.revokeObjectURL(url);blobURLs.clear();
-    const groups=unlocked.groups.filter(g=>activeFilter==='all'||activeFilter===g.id||g.days.includes(activeFilter));
+    const groups=unlocked.groups.filter(g=>activeFilter==='all'||activeFilter===g.id||g.days.includes(activeFilter)||(activeFilter==='transport'&&g.kind==='交通'));
     for(const g of groups){
       const card=create('article',undefined,'vault-record');
       card.append(create('p',g.days.join(' / ')+' · '+g.kind,'vault-small'),create('h3',g.title));
@@ -1615,13 +1618,13 @@ initialize();
       });
       target.append(card);
     }
-    const missing=unlocked.missing.filter(m=>activeFilter==='all'||m.days.includes(activeFilter));
+    const missing=unlocked.missing.filter(m=>activeFilter==='all'||activeFilter===m.id||m.days.includes(activeFilter)||(activeFilter==='transport'&&m.kind==='交通'));
     if(missing.length){const section=create('section',undefined,'vault-missing');section.append(create('h3','本次未找到的凭证'));list(section,missing.map(m=>m.title+'：'+m.note));target.append(section);}
     if(!groups.length&&!missing.length)target.append(create('p','这个日期没有检索到对应的预订凭证；不代表没有预订。'));
   }
   function populateFilter(){
     const select=$('#vault-filter');select.replaceChildren();
-    for(const [value,text] of [['all','全部预订'],...Array.from({length:13},(_,i)=>[`D${i+1}`,`D${i+1} 当天预订`]),...unlocked.groups.map(g=>[g.id,g.title])]){
+    for(const [value,text] of [['all','全部预订'],['transport','交通凭证：机票与租车'],...Array.from({length:13},(_,i)=>[`D${i+1}`,`D${i+1} 当天预订`]),...unlocked.groups.map(g=>[g.id,g.title]),...unlocked.missing.filter(m=>m.id).map(m=>[m.id,m.title+'（未检索到凭证）'])]){
       const o=create('option',text);o.value=value;select.append(o);
     }
     select.value=activeFilter;if(!select.value){activeFilter='all';select.value='all';}
@@ -1638,7 +1641,7 @@ initialize();
       if(!response.ok)throw Error('Download failed');
       const envelope=await response.json();
       if(envelope.version!==1||envelope.algorithm!=='AES-GCM'||envelope.kdf!=='PBKDF2-SHA256'||envelope.iterations!==600000)throw Error('Unsupported vault format');
-      if(!Array.isArray(envelope.parts)||envelope.parts.length>64||!envelope.parts.length||envelope.parts.some(p=>!/^part-\d{3}\.enc$/.test(p)))throw Error('Invalid encrypted parts');
+      if(!Array.isArray(envelope.parts)||envelope.parts.length>64||!envelope.parts.length||envelope.parts.some(p=>!/^part-(?:[a-f0-9]{16}-)?\d{3}\.enc$/.test(p)))throw Error('Invalid encrypted parts');
       const parts=[];
       for(let i=0;i<envelope.parts.length;i+=4){
         const batch=await Promise.all(envelope.parts.slice(i,i+4).map(async name=>{
@@ -1696,6 +1699,7 @@ initialize();
           <a href="#journey">逐日行程</a>
           <a href="https://herbchung.github.io/202609Travel/packing.html">行李清单</a>
           <button class="quiet-button" type="button" data-reservation="all">预订夹 🔒</button>
+          <button class="quiet-button" type="button" data-reservation="transport">交通凭证 🔒</button>
           <button class="quiet-button" id="expand-all" type="button">展开全部</button>
         </div>
       </nav>
