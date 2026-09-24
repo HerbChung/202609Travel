@@ -1550,17 +1550,32 @@ initialize();
   const dialog = document.createElement('dialog');
   dialog.id = 'reservation-vault';
   dialog.setAttribute('aria-labelledby', 'vault-title');
-  dialog.innerHTML = `<header class="vault-header"><div><p class="eyebrow dark">FAMILY RESERVATIONS</p><h2 id="vault-title">家庭预订夹</h2></div><button type="button" id="vault-close" aria-label="关闭并锁定预订夹">关闭并锁定 ×</button></header>
-    <form id="vault-unlock"><p>酒店、餐厅、景点、机票及租车的预订凭证已加密。请输入家庭密码，仅在当前设备解密。</p><label for="vault-password">家庭密码</label><div class="vault-password-row"><input id="vault-password" name="family-password" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" required /><button type="submit">解锁预订</button></div><label class="vault-show"><input type="checkbox" id="vault-show-password" /> 显示密码</label><p id="vault-message" role="status" aria-live="polite"></p><p class="vault-small">密码不上传、不保存。关闭、刷新或闲置10分钟后锁定。完整凭证请勿转发到公开群组。</p></form>
+  dialog.innerHTML = `<header class="vault-header"><div><p class="eyebrow dark">FAMILY RESERVATIONS</p><h2 id="vault-title">家庭预订夹</h2></div><button type="button" id="vault-close" aria-label="关闭预订夹">关闭 ×</button></header>
+    <form id="vault-unlock"><p>酒店、餐厅、景点、机票及租车的预订凭证已加密。请输入家庭密码，仅在当前设备解密。</p><label for="vault-password">家庭密码</label><div class="vault-password-row"><input id="vault-password" name="family-password" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" required /><button type="submit">解锁预订</button></div><label class="vault-show"><input type="checkbox" id="vault-show-password" /> 显示密码</label><p id="vault-message" role="status" aria-live="polite"></p><p class="vault-small">密码不上传。本浏览器解锁后24小时内可免密查看全部凭证，刷新或重新打开仍有效；点击“立即锁定”可提前结束。完整凭证请勿转发到公开群组。</p></form>
     <section id="vault-content" hidden><div class="vault-toolbar"><label for="vault-filter">查看范围</label><select id="vault-filter"></select><button type="button" id="vault-lock">立即锁定</button></div><p class="vault-small">据2026年9月24日已检索的邮件整理，不是商户实时订单状态。正文图片为原文重排快照；原始二维码单独列出。</p><div id="vault-records"></div></section>`;
   document.body.append(dialog);
   const $ = (s) => dialog.querySelector(s);
-  let unlocked = null, activeFilter = 'all', returnFocus = null, lastActive = Date.now();
+  let unlocked = null, activeFilter = 'all', returnFocus = null, expiresAt = 0;
   let requestNumber = 0, inflight = null;
   const blobURLs = new Set();
   const bytes = (value) => Uint8Array.from(atob(value), c => c.charCodeAt(0));
   const create = (tag, text, cls) => { const node=document.createElement(tag); if(text!==undefined)node.textContent=text; if(cls)node.className=cls; return node; };
+  const SESSION_KEY = 'family-vault:202609Travel:session:v1';
+  const SESSION_MS = 24 * 60 * 60 * 1000;
+  function forgetSession() { try { localStorage.removeItem(SESSION_KEY); } catch {} }
+  function readSession() {
+    try {
+      const value = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+      if (!value) return null;
+      if (value.version !== 1 || !Number.isFinite(value.expiresAt) || value.expiresAt <= Date.now() || value.expiresAt > Date.now() + SESSION_MS || typeof value.key !== 'string' || bytes(value.key).length !== 32 || typeof value.salt !== 'string') {
+        forgetSession(); return null;
+      }
+      return value;
+    } catch { forgetSession(); return null; }
+  }
+  function lockVault() { forgetSession(); clearPrivateContent(); }
   function clearPrivateContent() {
+    expiresAt = 0;
     requestNumber++;
     inflight?.abort(); inflight=null;
     unlocked=null;
@@ -1636,15 +1651,14 @@ initialize();
     }
     select.value=activeFilter;if(!select.value){activeFilter='all';select.value='all';}
   }
-  $('#vault-unlock').addEventListener('submit',async event=>{
-    event.preventDefault();const attempt=++requestNumber;
-    const password=$('#vault-password').value.trim();
-    if(!password)return;
+  async function unlockVault(password, remembered = null) {
+    const attempt=++requestNumber;
+    if(!password && !remembered)return;
     $('#vault-unlock button').disabled=true;$('#vault-message').textContent='正在下载加密凭证并解锁，首次可能需要一些时间…';
     try{
       if(!window.crypto?.subtle)throw Error('This browser needs HTTPS and Web Crypto');
       inflight=new AbortController();
-      const response=await fetch(new URL('reservations/vault.enc.json?v=41c9d70f555bb561',document.baseURI),{signal:inflight.signal,cache:'no-store'});
+      const response=await fetch(new URL('reservations/vault.enc.json?v=session24h-20260924',document.baseURI),{signal:inflight.signal,cache:'no-store'});
       if(!response.ok)throw Error('Download failed');
       const envelope=await response.json();
       if(envelope.version!==1||envelope.algorithm!=='AES-GCM'||envelope.kdf!=='PBKDF2-SHA256'||envelope.iterations!==600000)throw Error('Unsupported vault format');
@@ -1659,31 +1673,56 @@ initialize();
         parts.push(...batch);if(attempt!==requestNumber)return;
         $('#vault-message').textContent=`正在下载加密凭证 ${parts.length}/${envelope.parts.length}…`;
       }
-      const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);
-      const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:bytes(envelope.salt),iterations:envelope.iterations,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['decrypt']);
+      let key;
+      if (remembered) {
+        if (remembered.expiresAt <= Date.now() || remembered.salt !== envelope.salt) { forgetSession(); throw Error('Expired session'); }
+        key = await crypto.subtle.importKey('raw', bytes(remembered.key), 'AES-GCM', false, ['decrypt']);
+      } else {
+        const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);
+        key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:bytes(envelope.salt),iterations:envelope.iterations,hash:'SHA-256'},material,{name:'AES-GCM',length:256},true,['decrypt']);
+      }
       const plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes(envelope.iv)},key,bytes(parts.join('')));
       if(attempt!==requestNumber||!dialog.open)return;
       const payload=JSON.parse(new TextDecoder().decode(plaintext));
       if(payload.schema!==1||!Array.isArray(payload.groups))throw Error('Invalid vault data');
-      unlocked=payload;$('#vault-password').value='';lastActive=Date.now();
+      let nextSession = remembered;
+      if (!nextSession) {
+        const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key));
+        nextSession = {version:1, key:btoa(String.fromCharCode(...raw)), salt:envelope.salt, expiresAt:Date.now()+SESSION_MS};
+      }
+      if (attempt!==requestNumber || !dialog.open) return;
+      if (nextSession.expiresAt<=Date.now()) { forgetSession(); throw Error('Expired session'); }
+      if (!remembered) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession)); } catch {} }
+      expiresAt=nextSession.expiresAt;unlocked=payload;$('#vault-password').value='';
       populateFilter();render();$('#vault-unlock').hidden=true;$('#vault-content').hidden=false;$('#vault-filter').focus();
     }catch(error){
       if(attempt!==requestNumber||error.name==='AbortError')return;
-      $('#vault-message').textContent='未能解锁：请核对家庭密码；如密码正确，请检查网络或刷新后重试。';
+      if (remembered && error.name==='OperationError') forgetSession();
+      $('#vault-message').textContent=remembered?'自动解锁未完成，请输入家庭密码或检查网络后重试。':'未能解锁：请核对家庭密码；如密码正确，请检查网络或刷新后重试。';
     }finally{if(attempt===requestNumber){$('#vault-unlock button').disabled=false;inflight=null;}}
-  });
+  }
+  $('#vault-unlock').addEventListener('submit',event=>{event.preventDefault();unlockVault($('#vault-password').value.trim());});
   $('#vault-show-password').addEventListener('change',e=>{$('#vault-password').type=e.target.checked?'text':'password';});
-  $('#vault-filter').addEventListener('change',e=>{activeFilter=e.target.value;lastActive=Date.now();render();});
+  $('#vault-filter').addEventListener('change',e=>{activeFilter=e.target.value;render();});
   $('#vault-close').addEventListener('click',()=>dialog.close());
-  $('#vault-lock').addEventListener('click',()=>{clearPrivateContent();$('#vault-password').focus();});
+  $('#vault-lock').addEventListener('click',()=>{lockVault();$('#vault-password').focus();});
   dialog.addEventListener('close',()=>{clearPrivateContent();returnFocus?.focus();});
-  for(const type of ['pointerdown','keydown','scroll'])dialog.addEventListener(type,()=>{lastActive=Date.now();},{passive:true,capture:true});
-  setInterval(()=>{if(unlocked&&Date.now()-lastActive>600000){clearPrivateContent();$('#vault-message').textContent='闲置超过10分钟，已自动锁定。';}},15000);
+  function checkExpiry() {
+    if (unlocked && Date.now() >= expiresAt) { lockVault(); $('#vault-message').textContent='24小时免密访问已到期，请重新输入家庭密码。'; }
+  }
+  setInterval(checkExpiry,1000);
+  document.addEventListener('visibilitychange',checkExpiry);
+  window.addEventListener('pageshow',checkExpiry);
+  window.addEventListener('storage',event=>{if(event.key===SESSION_KEY && !readSession())clearPrivateContent();});
   window.addEventListener('pagehide',clearPrivateContent);
   document.addEventListener('click',e=>{
     const button=e.target.closest('[data-reservation]');if(!button)return;
-    activeFilter=button.dataset.reservation||'all';returnFocus=button;lastActive=Date.now();
-    dialog.showModal();$('#vault-password').focus();
+    activeFilter=button.dataset.reservation||'all';returnFocus=button;
+    checkExpiry();dialog.showModal();
+    const remembered=readSession();
+    if (unlocked) {render();$('#vault-filter').value=activeFilter;}
+    else if (remembered) unlockVault('',remembered);
+    else $('#vault-password').focus();
   });
 })();
 
